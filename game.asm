@@ -18,6 +18,7 @@
 gameactive: .db 0
 vidlow: .db 0
 vidhigh: .db 0
+tmp: .db 0
 renderqueue: .db 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
              .db 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 
 
@@ -166,6 +167,13 @@ palette_loop:
   jsr clear_nt
   jsr fill_nt
   
+  ldx #8 
+  lda #%10101010 
+attrib_queue_fill:
+  sta attribqueue,x
+  dex
+  bne attrib_queue_fill
+
   
 
 
@@ -269,55 +277,18 @@ vblank_wait3:
 
 
   
-;update edge
-update_edge:
-  lda #%10000100 
-  sta $2000 
-  lda current_position_high
-  sta $2006
-  lda current_position_low
-  sta $2006
-  ldx #30
-  lda #$10
-update_edge_loop:
-  sta $2007
-  dex
-  bne update_edge_loop
-  
-  lda current_position_high
-  sta $2006
-  lda current_position_low
-  adc #$00
-  sta current_position_low
-  sta $2006
-  lda #$10
-  ldx #30
-
-update_edge_loop2:
-  sta $2007
-  dex
-  bne update_edge_loop2
 
 
-;attribute table update
+
+;attribute table update or edge update
   
-  lda curr_nt_pos
-  beq handle_AT_0_update
-  ldy #$27
-  sty selected_attr_table_high
-  jmp finish_attr_high
-handle_AT_0_update:
-  ldy #$23
-  sty selected_attr_table_high
-finish_attr_high:
-attr_column_loop:
-  sty $2006
-  lda #C0
-  sta $2006
-  ldx #0
-  cmp #$E0
-  bcc attr_col_loop
-  
+  lda do_an_update
+  beq do_not_update_attrib_table
+  jsr update_attrib_col 
+do_not_update_attrib_table:
+  bne do_not_update_edge
+  jsr update_edge
+do_not_update_edge:
 
 ;ppuscroll
   lda character_nt
@@ -576,7 +547,8 @@ skip_update_high_position:
 ;decide to do an attr_update
   lda current_position_high
   and #%00000011
-  bne no_update_attrib:
+  and do_an_update
+  bne no_update_attrib
   lda #1
   sta do_an_update
   jmp finish_attrib_decide_update
@@ -762,10 +734,73 @@ draw_rest_loop:
 
 
 
+update_attrib_col:
+  lda curr_nt_pos
+  beq handle_AT_0_update
+  lda #$27
+  sta selected_attr_table_high
+  jmp finish_attr_high
+handle_AT_0_update:
+  lda #$23
+  sty selected_attr_table_high
+finish_attr_high:
+  ldy #$C0
+  lda current_position_low
+  lsr a
+  lsr a
+  tax
+attr_column_loop:
+  lda selected_attr_table_high
+  sta $2006
+  sty $2006
+  lda attribqueue,x
+  sta $2007
+  stx tmp
+  txa
+  adc #4
+  tax
+  lda attribqueue,x
+  sta $2007 
+  tya
+  adc #8
+  tay
+  ldx tmp
+  inx
+  cmp #$E0
+  bcc attr_column_loop
+  rts
 
 
+update_edge:
+  lda #%10000100 
+  sta $2000 
+  lda current_position_high
+  sta $2006
+  lda current_position_low
+  sta $2006
+  ldx #30
+  lda #$10
+update_edge_loop:
+  sta $2007
+  dex
+  bne update_edge_loop
+  
+  lda current_position_high
+  sta $2006
+  lda current_position_low
+  adc #$00
+  sta current_position_low
+  sta $2006
+  lda #$10
+  ldx #30
+
+update_edge_loop2:
+  sta $2007
+  dex
+  bne update_edge_loop2
 
 
+  rts
 ;***Data********************************
 ;metatiles
 space:    .db $00,$00,$00,$00
@@ -787,7 +822,7 @@ level_2:
 
   .bank 3
   .org $E000
-palette: .db $0F,$17,$28,$39,  $0F,$17,$28,$39,  $0F,$17,$28,$39,  $0F,$17,$28,$39
+palette: .db $0F,$17,$28,$39,  $0F,$30,$07,$36,  $0F,$17,$28,$39,  $0F,$17,$28,$39
          .db $0F,$30,$07,$36,  $0F,$17,$28,$39,  $0F,$17,$28,$39,  $0F,$17,$28,$39
 
 regs:
