@@ -60,8 +60,8 @@ ticks: .db 0
 velhigh: .db 0
 nmis: .db 0
 curr_keys: .db 0
-last_keys:.db 0
-
+last_keys: .db 0
+count: .db 0
 
 
 
@@ -170,8 +170,8 @@ palette_loop:
   ldx #8 
   lda #%10101010 
 attrib_queue_fill:
-  sta attribqueue,x
   dex
+  sta attribqueue,x
   bne attrib_queue_fill
 
   
@@ -228,6 +228,7 @@ attrib_queue_fill:
   sta vel_neg
   sta velhigh
   sta jumping
+  sta count
   sta vel_y
   sta ppu_scroll
   sta current_position_low
@@ -281,12 +282,17 @@ vblank_wait3:
 
 
 ;attribute table update or edge update
-  
+ 
+
+
+
+  inc count
+  bne do_not_update_edge
   lda do_an_update
   beq do_not_update_attrib_table
   jsr update_attrib_col 
+  jmp do_not_update_edge
 do_not_update_attrib_table:
-  bne do_not_update_edge
   jsr update_edge
 do_not_update_edge:
 
@@ -518,44 +524,13 @@ skip_reset_jump:
 
  
 
+  lda count
+  bne skipo
+  lda do_an_update
+  bne skipo
+  jsr checks
+skipo:
 
-
-;update scroll position
-
-  lda current_position_low
-  adc #1
-  sta current_position_low
-  cmp #32
-  bcc skip_update_high_position
-  lda #$00
-  sta current_position_low
-  lda curr_nt_pos
-  beq handle_0
-  dec curr_nt_pos
-  lda #$20 
-  sta current_position_high
-  jmp skip_update_high_position
-handle_0:
-  lda #$24
-  sta current_position_high
-  inc curr_nt_pos
-skip_update_high_position:
-
-
-
-
-;decide to do an attr_update
-  lda current_position_high
-  and #%00000011
-  and do_an_update
-  bne no_update_attrib
-  lda #1
-  sta do_an_update
-  jmp finish_attrib_decide_update
-no_update_attrib:
-  lda #0
-  sta do_an_update 
-finish_attrib_decide_update:
 
 
 
@@ -768,6 +743,7 @@ attr_column_loop:
   inx
   cmp #$E0
   bcc attr_column_loop
+  dec do_an_update
   rts
 
 
@@ -798,9 +774,45 @@ update_edge_loop2:
   sta $2007
   dex
   bne update_edge_loop2
+  
+
+  inc do_an_update
+  inc do_an_update
+  rts
+
+
+
+
+checks:
+;update scroll position
+
+  lda current_position_low
+  adc #1
+  sta current_position_low
+  cmp #32
+  bcc skip_update_high_position
+  lda #$00
+  sta current_position_low
+  lda curr_nt_pos
+  beq handle_0
+  dec curr_nt_pos
+  lda #$20 
+  sta current_position_high
+  jmp skip_update_high_position
+handle_0:
+  lda #$24
+  sta current_position_high
+  inc curr_nt_pos
+skip_update_high_position:
+
+
 
 
   rts
+
+
+
+
 ;***Data********************************
 ;metatiles
 space:    .db $00,$00,$00,$00
