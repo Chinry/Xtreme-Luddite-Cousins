@@ -168,7 +168,7 @@ palette_loop:
   jsr fill_nt
   
   ldx #8 
-  lda #%10101010 
+  lda #%01010101
 attrib_queue_fill:
   dex
   sta attribqueue,x
@@ -232,7 +232,6 @@ attrib_queue_fill:
   sta vel_y
   sta ppu_scroll
   sta current_position_low
-  sta do_an_update
   lda #$24
   sta current_position_high
   lda #1
@@ -241,6 +240,8 @@ attrib_queue_fill:
   sta next_notet
   lda #$B8
   sta playery
+  lda #2
+  sta do_an_update
   
 
 
@@ -286,15 +287,21 @@ vblank_wait3:
 
 
 
-  inc count
+  lda count
+  clc
+  adc #16
+  sta count
   bne do_not_update_edge
+
   lda do_an_update
-  beq do_not_update_attrib_table
-  jsr update_attrib_col 
+  beq update_attrib_table
+  jsr update_edge 
   jmp do_not_update_edge
-do_not_update_attrib_table:
-  jsr update_edge
+update_attrib_table:
+  jsr update_attrib_col
 do_not_update_edge:
+
+
 
 ;ppuscroll
   lda character_nt
@@ -328,7 +335,15 @@ skip_static_frame
   inc ticks
   lda ticks
   cmp velhigh
+  beq skip_reset_ticks
+  bcs reset_ticks
   bne skip_frame_change
+  jmp skip_reset_ticks
+reset_ticks:
+  lda #0
+  sta ticks
+  jmp skip_frame_change
+skip_reset_ticks:
   lda #0
   sta ticks
   inc sprite_botl + 1
@@ -406,6 +421,7 @@ skip_set_jumping:
   ror a
   bcc skip_move_right
   lda velocity
+  clc
   adc #3
   bvs skip_move_right
   sta velocity
@@ -414,6 +430,7 @@ skip_move_right:
   ror a
   bcc skip_move_left
   lda velocity
+  clc
   sbc #3
   bvs skip_move_left
   sta velocity
@@ -466,6 +483,7 @@ skip_friction:
   ldx playerx
   cpx #128
   bcc inc_playerx_location
+  clc
   adc ppu_scroll 
   sta ppu_scroll
   bcc skip_change_nt_on_scroll_end
@@ -475,11 +493,13 @@ skip_friction:
 skip_change_nt_on_scroll_end:
   jmp finish_velocity
 inc_playerx_location:
+  clc
   adc playerx
   sta playerx
   jmp finish_velocity
 negative_velocity:
   eor #$FF
+  clc
   adc #1
   lsr a
   lsr a
@@ -488,6 +508,7 @@ negative_velocity:
   sta vel_neg
   sta velhigh
   lda playerx
+  clc
   sbc vel_neg
   cmp #250
   bcc skip_stop_at_left
@@ -503,6 +524,7 @@ finish_velocity:
   lda vel_y
   bpl skip_neg_y_vel
   eor #$FF 
+  clc
   adc #1
   adc playery
   sta playery
@@ -527,7 +549,7 @@ skip_reset_jump:
   lda count
   bne skipo
   lda do_an_update
-  bne skipo
+  beq skipo
   jsr checks
 skipo:
 
@@ -710,6 +732,8 @@ draw_rest_loop:
 
 
 update_attrib_col:
+  lda #%10000100 
+  sta $2000 
   lda curr_nt_pos
   beq handle_AT_0_update
   lda #$27
@@ -717,13 +741,15 @@ update_attrib_col:
   jmp finish_attr_high
 handle_AT_0_update:
   lda #$23
-  sty selected_attr_table_high
+  sta selected_attr_table_high
 finish_attr_high:
-  ldy #$C0
+  ldx #0
   lda current_position_low
   lsr a
   lsr a
-  tax
+  clc
+  adc #$C0
+  tay
 attr_column_loop:
   lda selected_attr_table_high
   sta $2006
@@ -741,9 +767,10 @@ attr_column_loop:
   tay
   ldx tmp
   inx
-  cmp #$E0
+  cpx #9
   bcc attr_column_loop
-  dec do_an_update
+  lda #2
+  sta do_an_update
   rts
 
 
@@ -764,7 +791,8 @@ update_edge_loop:
   lda current_position_high
   sta $2006
   lda current_position_low
-  adc #$00
+  clc
+  adc #1
   sta current_position_low
   sta $2006
   lda #$10
@@ -776,8 +804,7 @@ update_edge_loop2:
   bne update_edge_loop2
   
 
-  inc do_an_update
-  inc do_an_update
+  dec do_an_update
   rts
 
 
@@ -787,6 +814,7 @@ checks:
 ;update scroll position
 
   lda current_position_low
+  clc
   adc #1
   sta current_position_low
   cmp #32
