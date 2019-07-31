@@ -50,10 +50,10 @@ current_position_high: .db 0 ;current nametable
 current_position_low: .db 0  ;position in the name table
 curr_nt_pos: .db 0  ;current name table of the updater ;bool
 character_nt: .db 0 ;current name table of the scroll ;bool
-
+hit_end: .db 0 ;if the updater is up to the player
 do_an_update: .db 0 ;update attribute table
 selected_attr_table_high: .db 0 ;tmp
-
+scroll_counter: .db 0 ;counts up until a complete 16 scroll
 
 
 ticks: .db 0
@@ -64,7 +64,11 @@ last_keys: .db 0
 count: .db 0
 
 
+;logic
+nothing: .db 0 ;bool
 
+
+;music
 note:.db 0
 pattern_offset:.db 0
 note_playing:.db 0
@@ -78,6 +82,12 @@ notet_length: .db 0
 notet_counter .db 0
 pattern_offsett .db 0
 notet .db 0
+
+;sound effects
+sound_effect_note: .db 0
+
+
+
 
 ;****GAME******************************  
   .org $8000
@@ -167,7 +177,10 @@ palette_loop:
   jsr clear_nt
   jsr fill_nt
   
-  ldx #8 
+
+
+;fill the attribute queue
+  ldx #8
   lda #%01010101
 attrib_queue_fill:
   dex
@@ -175,7 +188,12 @@ attrib_queue_fill:
   bne attrib_queue_fill
 
   
-
+  ldx #60
+  lda #$10
+render_queue_fill:
+  dex
+  sta renderqueue,x
+  bne render_queue_fill
 
 
 
@@ -232,9 +250,11 @@ attrib_queue_fill:
   sta vel_y
   sta ppu_scroll
   sta current_position_low
+  sta scroll_counter
   lda #$24
   sta current_position_high
   lda #1
+  sta nothing
   sta curr_nt_pos
   sta next_note
   sta next_notet
@@ -289,9 +309,12 @@ vblank_wait3:
 
   lda count
   clc
-  adc #16
+  adc #128
   sta count
   bne do_not_update_edge
+  lda hit_end
+  bne do_not_update_edge
+
 
   lda do_an_update
   beq update_attrib_table
@@ -412,7 +435,7 @@ pad_read_loop:
   lda jumping
   bne skip_set_jumping
   inc jumping
-  lda #10
+  lda #13
   sta vel_y
 skip_set_jumping:
 
@@ -544,9 +567,52 @@ end_vel_y:
   sta vel_y
 skip_reset_jump:
 
- 
 
+
+;game logic
+
+
+;default screen
+  lda nothing
+  beq skip_default_draw
+ 
+skip_default_draw:
+
+
+  
+
+
+
+
+
+
+
+
+
+  
+
+
+
+
+
+
+  lda #1
+  sta nothing
+
+
+
+
+
+  
+
+
+
+
+
+;update the updater
   lda count
+  bne skipo
+  lda hit_end
   bne skipo
   lda do_an_update
   beq skipo
@@ -554,9 +620,52 @@ skip_reset_jump:
 skipo:
 
 
+;check if update is complete
+  lda ppu_scroll
+  bne skip_seam 
+  lda curr_nt_pos
+  eor character_nt
+  ora current_position_low
+  bne skip_set_hit_end
+  lda #1
+  sta hit_end
+  lda #0
+  sta scroll_counter
+  jmp skip_set_hit_end
+skip_seam:
 
+  lda character_nt
+  cmp curr_nt_pos
+  bne skip_set_hit_end
+  ldx ppu_scroll
+  stx tmp
+  dex
+  lda current_position_low
+  asl a
+  asl a
+  asl a
+  adc #16
+  cmp tmp
+  bcc skip_set_hit_end
+  lda #1
+  sta hit_end
+  lda ppu_scroll
+  sta scroll_counter
+skip_set_hit_end:
 
-
+;reset hit_end
+  lda scroll_counter
+  clc
+  sbc ppu_scroll
+  bpl positive_scroll_difference
+  eor #$FF 
+  adc #1
+positive_scroll_difference:
+  cmp #17
+  bcc skip_hit_reset
+  lda #0
+  sta hit_end
+skip_hit_reset:
 
 ;***********MUSIC*************
 
@@ -658,9 +767,14 @@ next_t:
 
 
 
+
+
+
+
+
   .bank 2
   .org $C000
-;*********Functions*********************
+;*********Sub*Routines*********************
 set_static_frame:
   lda #4
   sta sprite_botr + 1
@@ -781,13 +895,12 @@ update_edge:
   sta $2006
   lda current_position_low
   sta $2006
-  ldx #30
-  lda #$10
-update_edge_loop:
-  sta $2007
-  dex
-  bne update_edge_loop
-  
+  ldx #15
+  ldy #0
+
+ 
+  jsr update_edge_loop
+
   lda current_position_high
   sta $2006
   lda current_position_low
@@ -795,24 +908,34 @@ update_edge_loop:
   adc #1
   sta current_position_low
   sta $2006
-  lda #$10
-  ldx #30
-
-update_edge_loop2:
-  sta $2007
-  dex
-  bne update_edge_loop2
+  ldy #2
+  ldx #15
   
+  jsr update_edge_loop
 
   dec do_an_update
+  rts
+
+
+update_edge_loop:
+  lda renderqueue,y
+  sta $2007
+  iny
+  lda renderqueue,y
+  sta $2007
+  tya
+  adc #2
+  tay
+  dex
+  bne update_edge_loop
+
   rts
 
 
 
 
 checks:
-;update scroll position
-
+;update the updater 
   lda current_position_low
   clc
   adc #1
@@ -833,37 +956,53 @@ handle_0:
   inc curr_nt_pos
 skip_update_high_position:
 
-
-
-
   rts
 
 
 
 
+  
+
+
 ;***Data********************************
-;metatiles
-space:    .db $00,$00,$00,$00
-block:    .db $13,$13,$13,$13
+metatiles:
+;top left , bot left, top right, bot right, pallete
+;                                        metatilenumber
+space:    .db $00,$00,$00,$00, $00 ;     0 
+ground:   .db $18,$19,$1A,$1B, $01 ;     1
+block:    .db $1C,$19,$1D,$1B, $01 ;     2
+
+
+;column
+
+
+
+;  nttttttt xxxxyyyy
+;  |||||||| ||||++++- Y position within a screen
+;  |||||||| ++++----- X position within a screen
+;  |+++++++---------- Object type
+;  +----------------- Next screen flag, moves to encoding the next screen if 1
+
+
 
 ;objects
 ;0, pit
-;
-;
-;
+;1, block
+;2, block row
+;3, block col
 ;
 
 
 level_1:
   .db %00000000,$AE
-  .db %10000000,$BE
+  .db %10000000,$5E
 
 level_2:
 
   .bank 3
   .org $E000
-palette: .db $0F,$17,$28,$39,  $0F,$30,$07,$36,  $0F,$17,$28,$39,  $0F,$17,$28,$39
-         .db $0F,$30,$07,$36,  $0F,$17,$28,$39,  $0F,$17,$28,$39,  $0F,$17,$28,$39
+palette: .db $0F,$17,$28,$39,  $0F,$17,$29,$39,  $0F,$17,$28,$39,  $0F,$17,$28,$39
+         .db $0F,$30,$07,$36,  $0F,$17,$29,$39,  $0F,$17,$28,$39,  $0F,$17,$28,$39
 
 regs:
         .db $30,$08,$00,$00
