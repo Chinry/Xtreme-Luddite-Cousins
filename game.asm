@@ -19,8 +19,11 @@ gameactive: .db 0
 vidlow: .db 0
 vidhigh: .db 0
 tmp: .db 0
-renderqueue: .db 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
-             .db 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 
+tmp2: .db 0
+tmp3: .db 0
+tmp4: .db 0
+renderqueue: .db 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0, 0,0
+             .db 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0, 0,0
 
 attribqueue: .db 0,0,0,0,0,0,0,0
 
@@ -64,8 +67,43 @@ last_keys: .db 0
 count: .db 0
 
 
-;logic
+;loading level
+next_level: .db 0 ;bool
+current_level: .db 0
+
+
+
+;object_drawing
+
+;screen is 1 name table wide
+
+
 nothing: .db 0 ;bool
+object_queue: .rs 10 ;checks the x for current draw
+object_rom_address_low: .db 0 ; indirect addressing for drawing update every (screen)
+object_rom_address_high: .db 0 ; indirect addressing for drawing update every (screen)
+                               ; index address to get the object
+
+
+
+
+;collision
+
+
+collision_table: .rs 240
+
+collision_index:  .rs 4        ;indexes for the look up of meta tile info in the main collision routine
+collide_metatile:  .rs 4       ;place to store collision meta tile data
+collide_vertical:  .rs 4       ;store the index data for the sprite positions in the main collision routine
+collide_horizontal:  .rs 4
+
+collide_data:  .rs 4           ;actual data from the meta tile streams
+collide_position:  .rs 4       ;the location to set him to if he hits something
+
+
+
+
+
 
 
 ;music
@@ -144,6 +182,19 @@ clear_oam_loop:
 
 
 
+  lda #0
+  ldx #8
+clear_attribqueue_loop:
+  dex
+  sta attribqueue,x
+  bne clear_attribqueue_loop
+
+
+  ldx #60
+clear_renderqueue_loop:
+  dex
+  sta renderqueue,x
+  bne clear_renderqueue_loop
 
 vblank_wait2:
   bit $2002
@@ -177,23 +228,6 @@ palette_loop:
   jsr clear_nt
   jsr fill_nt
   
-
-
-;fill the attribute queue
-  ldx #8
-  lda #%01010101
-attrib_queue_fill:
-  dex
-  sta attribqueue,x
-  bne attrib_queue_fill
-
-  
-  ldx #60
-  lda #$10
-render_queue_fill:
-  dex
-  sta renderqueue,x
-  bne render_queue_fill
 
 
 
@@ -251,14 +285,18 @@ render_queue_fill:
   sta ppu_scroll
   sta current_position_low
   sta scroll_counter
+  sta nametable_counter
+  sta object_rom_address
+  sta current_level
   lda #$24
   sta current_position_high
   lda #1
+  sta next_level
   sta nothing
   sta curr_nt_pos
   sta next_note
   sta next_notet
-  lda #$B8
+  lda #$B3
   sta playery
   lda #2
   sta do_an_update
@@ -307,11 +345,11 @@ vblank_wait3:
 
 
 
-  lda count
-  clc
-  adc #128
-  sta count
-  bne do_not_update_edge
+  ;lda count
+  ;clc
+  ;adc #1
+  ;sta count
+  ;bne do_not_update_edge
   lda hit_end
   bne do_not_update_edge
 
@@ -342,6 +380,12 @@ end_nm_select:
   sta $2005
 
 ;**************************************
+  lda next_level
+  beq skip_level_load 
+  jsr load_next_level
+skip_level_load:
+
+
 
 
 
@@ -435,7 +479,7 @@ pad_read_loop:
   lda jumping
   bne skip_set_jumping
   inc jumping
-  lda #13
+  lda #15
   sta vel_y
 skip_set_jumping:
 
@@ -558,10 +602,10 @@ skip_neg_y_vel:
   sta playery
 end_vel_y:
   lda playery
-  cmp #$AF
+  cmp #$B2
   bcc skip_reset_jump
   dec jumping
-  lda #$B8
+  lda #$B3
   sta playery
   lda #0
   sta vel_y
@@ -575,10 +619,21 @@ skip_reset_jump:
 ;default screen
   lda nothing
   beq skip_default_draw
- 
+  lda #12
+  sta <tmp2
+  ldx #1
+  ldy #0
+write_blank_loop:
+  jsr draw_metatile 
+  dec <tmp2
+  bne write_blank_loop
+  ldx #1
+  jsr draw_metatile
+  ldx #2
+  jsr draw_metatile
+  jsr draw_metatile
 skip_default_draw:
 
-
   
 
 
@@ -595,7 +650,7 @@ skip_default_draw:
 
 
 
-
+;reset nothing
   lda #1
   sta nothing
 
@@ -610,8 +665,8 @@ skip_default_draw:
 
 
 ;update the updater
-  lda count
-  bne skipo
+  ;lda count
+  ;bne skipo
   lda hit_end
   bne skipo
   lda do_an_update
@@ -638,14 +693,14 @@ skip_seam:
   cmp curr_nt_pos
   bne skip_set_hit_end
   ldx ppu_scroll
-  stx tmp
+  stx <tmp
   dex
   lda current_position_low
   asl a
   asl a
   asl a
   adc #16
-  cmp tmp
+  cmp <tmp
   bcc skip_set_hit_end
   lda #1
   sta hit_end
@@ -870,7 +925,7 @@ attr_column_loop:
   sty $2006
   lda attribqueue,x
   sta $2007
-  stx tmp
+  stx <tmp
   txa
   adc #4
   tax
@@ -879,9 +934,9 @@ attr_column_loop:
   tya
   adc #8
   tay
-  ldx tmp
+  ldx <tmp
   inx
-  cpx #9
+  cpx #8
   bcc attr_column_loop
   lda #2
   sta do_an_update
@@ -896,7 +951,7 @@ update_edge:
   lda current_position_low
   sta $2006
   ldx #15
-  ldy #0
+  ldy #$00
 
  
   jsr update_edge_loop
@@ -908,9 +963,8 @@ update_edge:
   adc #1
   sta current_position_low
   sta $2006
-  ldy #2
+  ldy #$02
   ldx #15
-  
   jsr update_edge_loop
 
   dec do_an_update
@@ -923,9 +977,9 @@ update_edge_loop:
   iny
   lda renderqueue,y
   sta $2007
-  tya
-  adc #2
-  tay
+  iny
+  iny
+  iny
   dex
   bne update_edge_loop
 
@@ -942,6 +996,8 @@ checks:
   sta current_position_low
   cmp #32
   bcc skip_update_high_position
+  clc
+  jsr next_object_screen
   lda #$00
   sta current_position_low
   lda curr_nt_pos
@@ -961,19 +1017,156 @@ skip_update_high_position:
 
 
 
+;x is tile number
+;y is memory offset in the buffer writing to
+draw_metatile:
+  sty <tmp4
+  lda #0
+  sta <tmp
+
+
+
+;value = (bottomright << 6) | (bottomleft << 4) | (topright << 2) | (topleft << 0)
+  tya
+  lsr a
+  lsr a
+  tay
+  and #$01
+  beq skip_inc_to_bot
+  lda #2
+  sta <tmp
+skip_inc_to_bot:
+  lda #2    
+  and current_position_low
+  beq skip_inc_to_right
+  inc <tmp 
+skip_inc_to_right:
+  tya
+  lsr a
+  tay
+  lda tmp
+  beq skip_shift_loop
+  lda metaattributes,x
+shift_by_counter_loop:
+  asl a 
+  asl a 
+  dec <tmp
+  bne shift_by_counter_loop
+  jmp skip_load 
+skip_shift_loop:
+  lda metaattributes,x
+skip_load:
+  clc
+  ora attribqueue,y
+  sta attribqueue,y
+ 
+
+
+
+
   
 
+
+
+
+
+
+  ldy <tmp4
+  tya
+  and #%00000001
+  bne handle_odd_collision_tile
+  tya
+  lsr a
+  lsr a
+  tay
+  lda collision_tiles,x
+  asl a
+  asl a
+  asl a
+  asl a
+  ora collision_table,y
+  sta collision_tiles,x
+  jmp end_collision_write
+handle_odd_collision_tile:
+  tya
+  lsr a
+  tay
+  lda collision_table,y
+  ora collision_tiles,x
+  sta collision_table,y 
+
+end_collision_write:
+
+  
+  stx <tmp3
+  txa
+  asl a
+  asl a
+  tax
+  lda #4
+  sta <tmp
+  ldy <tmp4
+fill_render_queue_loop:
+  lda metatiles,x
+  sta renderqueue,y
+  iny
+  inx
+  dec <tmp
+  bne fill_render_queue_loop
+  ldx <tmp3
+  rts
+ 
+
+  load_next_level:
+;load the lookups
+  lda current_level 
+  asl current_level
+  tax
+  lda level_lookup_table,x
+  sta object_rom_address_low
+  inx
+  lda level_lookup_table,x
+  sta object_rom_address_high
+  inc current_level
+  dec next_level
+;reset_variables 
+
+  rts
+
+
+
+
+
+
+
+  next_object_screen:
+  
+  rts
+  
 
 ;***Data********************************
 metatiles:
 ;top left , bot left, top right, bot right, pallete
 ;                                        metatilenumber
-space:    .db $00,$00,$00,$00, $00 ;     0 
-ground:   .db $18,$19,$1A,$1B, $01 ;     1
-block:    .db $1C,$19,$1D,$1B, $01 ;     2
+space:    .db $00,$00,$00,$00  ;     0 
+ground:   .db $18,$19,$1A,$1B  ;     1
+block:    .db $1C,$19,$1D,$1B  ;     2
 
 
-;column
+metaattributes:
+spaceattr:    .db $00 ;0
+groundattr:   .db $01 ;1
+blockattr:    .db $01 ;2
+
+
+
+collision_tiles:
+spacecoll:  .db $00 ;0
+groundcoll:     .db $01 ;1
+blockcoll:      .db $01 ;2
+
+
+
 
 
 
@@ -996,8 +1189,19 @@ block:    .db $1C,$19,$1D,$1B, $01 ;     2
 level_1:
   .db %00000000,$AE
   .db %10000000,$5E
-
+  .db %0000000
 level_2:
+
+
+
+;level lookup table 
+;at the beginning of a level load the offset for the level into the 
+;object rom address variable
+level_lookup_table:
+  .dw level_1
+  .dw level_2
+
+
 
   .bank 3
   .org $E000
