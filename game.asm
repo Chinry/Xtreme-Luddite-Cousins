@@ -285,9 +285,8 @@ palette_loop:
   sta ppu_scroll
   sta current_position_low
   sta scroll_counter
-  sta nametable_counter
-  sta object_rom_address
   sta current_level
+  sta hit_end
   lda #$24
   sta current_position_high
   lda #1
@@ -380,10 +379,10 @@ end_nm_select:
   sta $2005
 
 ;**************************************
-  lda next_level
-  beq skip_level_load 
-  jsr load_next_level
-skip_level_load:
+;  lda next_level
+;  beq skip_level_load 
+;  jsr load_next_level
+;skip_level_load:
 
 
 
@@ -619,7 +618,7 @@ skip_reset_jump:
 ;default screen
   lda nothing
   beq skip_default_draw
-  lda #12
+  lda #14
   sta <tmp2
   ldx #1
   ldy #0
@@ -627,11 +626,11 @@ write_blank_loop:
   jsr draw_metatile 
   dec <tmp2
   bne write_blank_loop
-  ldx #1
-  jsr draw_metatile
-  ldx #2
-  jsr draw_metatile
-  jsr draw_metatile
+;  ldx #1
+;  jsr draw_metatile
+;  ldx #2
+;  jsr draw_metatile
+;  jsr draw_metatile
 skip_default_draw:
 
   
@@ -996,8 +995,6 @@ checks:
   sta current_position_low
   cmp #32
   bcc skip_update_high_position
-  clc
-  jsr next_object_screen
   lda #$00
   sta current_position_low
   lda curr_nt_pos
@@ -1139,9 +1136,6 @@ fill_render_queue_loop:
 
 
 
-  next_object_screen:
-  
-  rts
   
 
 ;***Data********************************
