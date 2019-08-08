@@ -15,17 +15,27 @@
   .bank 0
 ;****Zero-Page*************************
   .org $0000
-gameactive: .db 0
-vidlow: .db 0
-vidhigh: .db 0
 tmp: .db 0
 tmp2: .db 0
 tmp3: .db 0
 tmp4: .db 0
+tmp5: .db 0
+tmp6: .db 0
+
+
+jump_pointer: .db 0,0
+
+object_rom_address_low: .db 0 ; indirect addressing for drawing update every (screen)
+object_rom_address_high: .db 0 ; indirect addressing for drawing update every (screen)
+                               ; index address to get the object
+
 renderqueue: .db 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0, 0,0
              .db 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0, 0,0
 
 attribqueue: .db 0,0,0,0,0,0,0,0
+
+
+
 
 
 ;****RAM********************************
@@ -70,7 +80,8 @@ count: .db 0
 ;loading level
 next_level: .db 0 ;bool
 current_level: .db 0
-
+first_screen: .db 0
+is_next_screen_object: .db 0
 
 
 ;object_drawing
@@ -79,11 +90,9 @@ current_level: .db 0
 
 
 nothing: .db 0 ;bool
-object_queue: .rs 10 ;checks the x for current draw
-object_rom_address_low: .db 0 ; indirect addressing for drawing update every (screen)
-object_rom_address_high: .db 0 ; indirect addressing for drawing update every (screen)
-                               ; index address to get the object
-
+object_coord_queue: .db 0,0,0,0,0,0,0,0,0,0,0 ;checks the x for current draw
+object_id_queue: .db 0,0,0,0,0,0,0,0,0,0,0 ;lookup the object to draw
+num_objects: .db 0
 
 
 
@@ -282,6 +291,7 @@ palette_loop:
   sta jumping
   sta count
   sta vel_y
+  sta num_objects 
   sta ppu_scroll
   sta current_position_low
   sta scroll_counter
@@ -290,6 +300,7 @@ palette_loop:
   lda #$24
   sta current_position_high
   lda #1
+  sta first_screen
   sta next_level
   sta nothing
   sta curr_nt_pos
@@ -379,10 +390,10 @@ end_nm_select:
   sta $2005
 
 ;**************************************
-;  lda next_level
-;  beq skip_level_load 
-;  jsr load_next_level
-;skip_level_load:
+  lda next_level
+  beq skip_level_load 
+  jsr load_next_level
+skip_level_load:
 
 
 
@@ -614,25 +625,13 @@ skip_reset_jump:
 
 ;game logic
 
-
-;default screen
-  lda nothing
-  beq skip_default_draw
-  lda #14
-  sta <tmp2
-  ldx #1
-  ldy #0
-write_blank_loop:
-  jsr draw_metatile 
-  dec <tmp2
-  bne write_blank_loop
-;  ldx #1
-;  jsr draw_metatile
-;  ldx #2
-;  jsr draw_metatile
-;  jsr draw_metatile
-skip_default_draw:
-
+  lda do_an_update
+  cmp #2
+  bne skip_edge_write
+  lda hit_end
+  bne skip_edge_write
+  jsr check_object_list 
+skip_edge_write:
   
 
 
@@ -995,6 +994,10 @@ checks:
   sta current_position_low
   cmp #32
   bcc skip_update_high_position
+  lda first_screen
+  bne reset_first 
+  jsr read_next_screen_objects
+return_first_reset
   lda #$00
   sta current_position_low
   lda curr_nt_pos
@@ -1011,7 +1014,9 @@ skip_update_high_position:
 
   rts
 
-
+reset_first
+  dec first_screen
+  jmp return_first_reset
 
 
 ;x is tile number
@@ -1020,7 +1025,6 @@ draw_metatile:
   sty <tmp4
   lda #0
   sta <tmp
-
 
 
 ;value = (bottomright << 6) | (bottomleft << 4) | (topright << 2) | (topleft << 0)
@@ -1068,31 +1072,31 @@ skip_load:
 
 
 
-  ldy <tmp4
-  tya
-  and #%00000001
-  bne handle_odd_collision_tile
-  tya
-  lsr a
-  lsr a
-  tay
-  lda collision_tiles,x
-  asl a
-  asl a
-  asl a
-  asl a
-  ora collision_table,y
-  sta collision_tiles,x
-  jmp end_collision_write
-handle_odd_collision_tile:
-  tya
-  lsr a
-  tay
-  lda collision_table,y
-  ora collision_tiles,x
-  sta collision_table,y 
-
-end_collision_write:
+   ldy <tmp4
+;  tya
+;  and #%00000001
+;  bne handle_odd_collision_tile
+;  tya
+;  lsr a
+;  lsr a
+;  tay
+;  lda collision_tiles,x
+;  asl a
+;  asl a
+;  asl a
+;  asl a
+;  ora collision_table,y
+;  sta collision_tiles,x
+;  jmp end_collision_write
+;handle_odd_collision_tile:
+;  tya
+;  lsr a
+;  tay
+;  lda collision_table,y
+;  ora collision_tiles,x
+;  sta collision_table,y 
+;
+;end_collision_write:
 
   
   stx <tmp3
@@ -1129,6 +1133,179 @@ fill_render_queue_loop:
 ;reset_variables 
 
   rts
+  
+
+read_next_screen_objects:
+  ldy #0
+  sty num_objects
+  load_objects_loop:
+  ldy #1
+  sty is_next_screen_object
+  lda [object_rom_address_low],y
+  ldy num_objects
+  sta object_coord_queue,y
+  ldy #0
+  lda [object_rom_address_low],y
+  tax
+  and #%01111111
+  ldy num_objects
+  sta object_id_queue,y
+  clc
+  lda object_rom_address_low
+  adc #2
+  sta object_rom_address_low
+  lda object_rom_address_high
+  adc #0
+  sta object_rom_address_high
+  inc num_objects
+  txa
+  cmp #%11111111
+  bne skip_win_level_routine
+  jmp win_level 
+skip_win_level_routine:
+  and #%10000000
+  beq load_objects_loop
+  rts
+
+
+
+check_object_list:
+  ldx num_objects   
+  dex
+  bne object_check_loop
+  rts
+object_check_loop:
+  lda object_coord_queue,x
+  and #%11110000
+  lsr a
+  lsr a
+  lsr a
+  lsr a
+  sta <tmp6
+  lda current_position_low
+  lsr a
+  cmp <tmp6
+  bne skip_draw_object_in_queue
+  lda object_id_queue,x
+  asl a
+  tay
+  lda drawing_procedure_lookup,y
+  sta jump_pointer
+  iny
+  lda drawing_procedure_lookup,y
+  sta jump_pointer + 1
+  stx <tmp5
+  lda <tmp6
+  tay
+  jmp [jump_pointer]
+return_from_draw:
+  ldx <tmp5
+skip_draw_object_in_queue:
+  
+  dex
+  bpl object_check_loop
+  lda nothing
+  beq skip_draw_nothing
+  jsr nothing_write
+skip_draw_nothing:
+  rts
+
+
+
+draw_pit:
+  ldy #0
+  ldx #1
+  lda #15
+  sta <tmp2
+draw_pit_loop:
+  jsr draw_metatile
+  dec <tmp2
+  bne draw_pit_loop
+  lda #0
+  sta nothing
+  jmp return_from_draw
+
+
+draw_block:
+  ldx #2
+  jsr draw_metatile
+  lda #0
+  sta nothing
+  jmp return_from_draw
+
+
+
+
+;default screen
+nothing_write:
+  lda nothing
+  beq skip_default_draw
+  lda #12
+  sta <tmp2
+  ldx #0
+  ldy #0
+write_blank_loop:
+  jsr draw_metatile 
+  dec <tmp2
+  bne write_blank_loop
+  ldx #1
+  jsr draw_metatile
+  ldx #2
+  jsr draw_metatile
+  jsr draw_metatile
+skip_default_draw:
+  rts
+
+
+win_level:
+  lda #0
+  sta $2000
+  bit $2002
+  bpl win_level
+  lda #$27
+  sta $2006
+  lda #$20
+  sta $2006
+  ldx #32
+  lda #18
+draw_loop2:
+  sta $2007
+  dex
+  bne draw_loop2
+  ldx #96
+  lda #19
+draw_rest_loop2:
+  sta $2007
+  dex
+  bne draw_rest_loop2
+
+
+benis:
+  bit $2002
+  bpl benis
+  lda #$23
+  sta $2006
+  lda #$20
+  sta $2006
+  ldx #32
+  lda #18
+draw_loop3:
+  sta $2007
+  dex
+  bne draw_loop3
+  ldx #96
+  lda #19
+draw_rest_loop3:
+  sta $2007
+  dex
+  bne draw_rest_loop3
+  lda #%10000000
+  sta $2001
+hang:
+  nop
+  jmp hang
+
+
 
 
 
@@ -1177,13 +1354,14 @@ blockcoll:      .db $01 ;2
 ;1, block
 ;2, block row
 ;3, block col
-;
+;127, level end
 
 
 level_1:
-  .db %00000000,$AE
+  .db %00000000,$7E
   .db %10000000,$5E
-  .db %0000000
+  .db %10000000,$5E
+  .db %11111111,$6E
 level_2:
 
 
@@ -1194,6 +1372,14 @@ level_2:
 level_lookup_table:
   .dw level_1
   .dw level_2
+
+
+drawing_procedure_lookup:
+  .dw draw_pit
+  .dw draw_block
+
+
+
 
 
 
