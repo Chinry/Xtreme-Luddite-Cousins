@@ -1197,6 +1197,7 @@ object_check_loop:
   stx <tmp5
   lda <tmp6
   tay
+  dey
   jmp [jump_pointer]
 return_from_draw:
   ldx <tmp5
@@ -1214,7 +1215,7 @@ skip_draw_nothing:
 
 draw_pit:
   ldy #0
-  ldx #1
+  ldx #0
   lda #15
   sta <tmp2
 draw_pit_loop:
@@ -1359,8 +1360,14 @@ blockcoll:      .db $01 ;2
 
 level_1:
   .db %00000000,$7E
-  .db %10000000,$5E
-  .db %10000000,$5E
+  .db %00000000,$4E
+  .db %00000001,$56
+  .db %10000000,$4E
+  .db %00000000,$6E
+  .db %10000000,$3E
+  .db %10000000,$3E
+  .db %10000000,$3E
+  .db %10000000,$7E
   .db %11111111,$6E
 level_2:
 
