@@ -21,7 +21,7 @@ tmp3: .db 0
 tmp4: .db 0
 tmp5: .db 0
 tmp6: .db 0
-
+tmp7: .db 0
 
 jump_pointer: .db 0,0
 
@@ -626,8 +626,7 @@ skip_reset_jump:
 ;game logic
 
   lda do_an_update
-  cmp #2
-  bne skip_edge_write
+  beq skip_edge_write
   lda hit_end
   bne skip_edge_write
   jsr check_object_list 
@@ -994,10 +993,7 @@ checks:
   sta current_position_low
   cmp #32
   bcc skip_update_high_position
-  lda first_screen
-  bne reset_first 
   jsr read_next_screen_objects
-return_first_reset
   lda #$00
   sta current_position_low
   lda curr_nt_pos
@@ -1014,9 +1010,6 @@ skip_update_high_position:
 
   rts
 
-reset_first
-  dec first_screen
-  jmp return_first_reset
 
 
 ;x is tile number
@@ -1159,10 +1152,6 @@ read_next_screen_objects:
   sta object_rom_address_high
   inc num_objects
   txa
-  cmp #%11111111
-  bne skip_win_level_routine
-  jmp win_level 
-skip_win_level_routine:
   and #%10000000
   beq load_objects_loop
   rts
@@ -1171,9 +1160,10 @@ skip_win_level_routine:
 
 check_object_list:
   ldx num_objects   
+  bne skip_jump_hop
+  jmp skip_draw_nothing
+skip_jump_hop:
   dex
-  bne object_check_loop
-  rts
 object_check_loop:
   lda object_coord_queue,x
   and #%11110000
@@ -1186,6 +1176,11 @@ object_check_loop:
   lsr a
   cmp <tmp6
   bne skip_draw_object_in_queue
+  lda object_coord_queue,x
+  and #$0F
+  asl a
+  asl a
+  sta <tmp6
   lda object_id_queue,x
   asl a
   tay
@@ -1195,9 +1190,7 @@ object_check_loop:
   lda drawing_procedure_lookup,y
   sta jump_pointer + 1
   stx <tmp5
-  lda <tmp6
-  tay
-  dey
+  ldy <tmp6
   jmp [jump_pointer]
 return_from_draw:
   ldx <tmp5
@@ -1258,53 +1251,6 @@ skip_default_draw:
   rts
 
 
-win_level:
-  lda #0
-  sta $2000
-  bit $2002
-  bpl win_level
-  lda #$27
-  sta $2006
-  lda #$20
-  sta $2006
-  ldx #32
-  lda #18
-draw_loop2:
-  sta $2007
-  dex
-  bne draw_loop2
-  ldx #96
-  lda #19
-draw_rest_loop2:
-  sta $2007
-  dex
-  bne draw_rest_loop2
-
-
-benis:
-  bit $2002
-  bpl benis
-  lda #$23
-  sta $2006
-  lda #$20
-  sta $2006
-  ldx #32
-  lda #18
-draw_loop3:
-  sta $2007
-  dex
-  bne draw_loop3
-  ldx #96
-  lda #19
-draw_rest_loop3:
-  sta $2007
-  dex
-  bne draw_rest_loop3
-  lda #%10000000
-  sta $2001
-hang:
-  nop
-  jmp hang
 
 
 
@@ -1359,16 +1305,48 @@ blockcoll:      .db $01 ;2
 
 
 level_1:
+  .db %00000001,$09
+  .db %10000001,$09
+  .db %10000001,$09
+  .db %10000001,$09
+  .db %10000001,$09
+  .db %10000001,$09
+  .db %10000001,$09
+  .db %10000001,$09
+  .db %10000001,$09
+  .db %10000001,$09
+  .db %10000001,$09
+  .db %10000001,$09
+  .db %10000001,$09
+  .db %10000001,$09
+  .db %10000001,$09
+  .db %10000001,$09
+  .db %10000001,$09
+  .db %10000001,$09
+  .db %10000001,$09
+  .db %10000001,$09
+  .db %10000001,$09
+  .db %10000001,$09
+  .db %10000001,$09
+  .db %10000001,$09
+  .db %10000001,$09
+  .db %10000001,$09
+  .db %10000001,$09
+  .db %10000001,$09
+  .db %10000001,$09
+  .db %10000001,$09
+  .db %10000001,$09
   .db %00000000,$7E
+  .db %00000000,$5E
   .db %00000000,$4E
-  .db %00000001,$56
-  .db %10000000,$4E
+  .db %00000001,$59
+  .db %10000000,$8E
   .db %00000000,$6E
-  .db %10000000,$3E
-  .db %10000000,$3E
-  .db %10000000,$3E
+  .db %10000000,$4E
+  .db %10000000,$4E
+  .db %10000000,$4E
   .db %10000000,$7E
-  .db %11111111,$6E
+ ; .db %11111111,$6E
 level_2:
 
 
