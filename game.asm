@@ -235,8 +235,16 @@ palette_loop:
 
   ;clear and fill the name table
   jsr clear_nt
+  lda #$23
+  sta $2006
+  lda #$20
+  sta $2006
   jsr fill_nt
-  
+  lda #$27
+  sta $2006
+  lda #$20
+  sta $2006
+  jsr fill_nt
 
 
 
@@ -269,8 +277,11 @@ palette_loop:
   sta sprite_botr + 2
 
 ;enable nmi and use pattern table 0
-  lda #%10000000
+  lda #%10001000
   sta $2000
+  lda #1
+  sta nothing
+  jsr nothing_write  
 
 ;init ticks
   lda #$00
@@ -306,7 +317,7 @@ palette_loop:
   sta curr_nt_pos
   sta next_note
   sta next_notet
-  lda #$B3
+  lda #$AF
   sta playery
   lda #2
   sta do_an_update
@@ -315,7 +326,7 @@ palette_loop:
 
 
 
-  lda #%10000100 
+  lda #%10001100 
   sta $2000 
 
 
@@ -336,7 +347,7 @@ vblank_wait3:
   sta $4014
   
   ldx #0
-  lda #%10000000
+  lda #%10001100
   stx $2005
   stx $2005
   sta $2000
@@ -377,11 +388,11 @@ do_not_update_edge:
 ;ppuscroll
   lda character_nt
   beq nm_select_0
-  lda #%10000101
+  lda #%10001101
   sta $2000 
   jmp end_nm_select
 nm_select_0:
-  lda #%10000100 
+  lda #%10001100 
   sta $2000 
 end_nm_select:
   lda ppu_scroll
@@ -612,10 +623,10 @@ skip_neg_y_vel:
   sta playery
 end_vel_y:
   lda playery
-  cmp #$B2
+  cmp #$AE
   bcc skip_reset_jump
   dec jumping
-  lda #$B3
+  lda #$AF
   sta playery
   lda #0
   sta vel_y
@@ -877,10 +888,6 @@ ppu_clear_attr_table1:
 fill_nt:
   
 ;draw something
-  lda #$23
-  sta $2006
-  lda #$20
-  sta $2006
   ldx #32
   lda #18
 draw_loop:
@@ -898,7 +905,7 @@ draw_rest_loop:
 
 
 update_attrib_col:
-  lda #%10000100 
+  lda #%10001100 
   sta $2000 
   lda curr_nt_pos
   beq handle_AT_0_update
@@ -941,7 +948,7 @@ attr_column_loop:
 
 
 update_edge:
-  lda #%10000100 
+  lda #%10001100 
   sta $2000 
   lda current_position_high
   sta $2006
@@ -1234,7 +1241,7 @@ draw_block:
 nothing_write:
   lda nothing
   beq skip_default_draw
-  lda #12
+  lda #11
   sta <tmp2
   ldx #0
   ldy #0
@@ -1245,6 +1252,7 @@ write_blank_loop:
   ldx #1
   jsr draw_metatile
   ldx #2
+  jsr draw_metatile
   jsr draw_metatile
   jsr draw_metatile
 skip_default_draw:
@@ -1267,7 +1275,7 @@ metatiles:
 ;top left , bot left, top right, bot right, pallete
 ;                                        metatilenumber
 space:    .db $00,$00,$00,$00  ;     0 
-ground:   .db $18,$19,$1A,$1B  ;     1
+grass:    .db $00,$18,$00,$1A ;     1
 block:    .db $1C,$19,$1D,$1B  ;     2
 
 
