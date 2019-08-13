@@ -25,6 +25,9 @@ tmp7: .db 0
 
 jump_pointer: .db 0,0
 
+collision_lookup_pointer: .db 0,0
+
+
 object_rom_address_low: .db 0 ; indirect addressing for drawing update every (screen)
 object_rom_address_high: .db 0 ; indirect addressing for drawing update every (screen)
                                ; index address to get the object
@@ -51,6 +54,7 @@ playery: .db 0
 velocity: .db 0
 vel_neg: .db 0
 vel_y: .db 0
+vel_y_high: .db 0
 jumping: .db 0 ;bool
 
 
@@ -98,18 +102,16 @@ num_objects: .db 0
 
 ;collision
 
+collision_table: .db 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+    
+;                          type,location
+collision_side_top:       .db 0,0
+collision_side_bottom:    .db 0,0 
+collision_vertical_left:  .db 0,0
+collision_vertical_right: .db 0,0
 
-collision_table: .rs 240
-
-collision_index:  .rs 4        ;indexes for the look up of meta tile info in the main collision routine
-collide_metatile:  .rs 4       ;place to store collision meta tile data
-collide_vertical:  .rs 4       ;store the index data for the sprite positions in the main collision routine
-collide_horizontal:  .rs 4
-
-collide_data:  .rs 4           ;actual data from the meta tile streams
-collide_position:  .rs 4       ;the location to set him to if he hits something
-
-
+playerxtmp: .db 0
+playerytmp: .db 0
 
 
 
@@ -229,7 +231,7 @@ palette_loop:
 
   
 
-
+  jsr init_nt0_collision
 
 
 
@@ -282,6 +284,7 @@ palette_loop:
   lda #1
   sta nothing
   jsr nothing_write  
+  jsr nothing_write  
 
 ;init ticks
   lda #$00
@@ -295,7 +298,6 @@ palette_loop:
   sta rest_timer
   sta notet_length
   sta notet_counter
-  sta playerx
   sta velocity
   sta vel_neg
   sta velhigh
@@ -321,7 +323,8 @@ palette_loop:
   sta playery
   lda #2
   sta do_an_update
-  
+  lda #20 
+  sta playerx
 
 
 
@@ -500,7 +503,7 @@ pad_read_loop:
   lda jumping
   bne skip_set_jumping
   inc jumping
-  lda #15
+  lda #20
   sta vel_y
 skip_set_jumping:
 
@@ -509,6 +512,9 @@ skip_set_jumping:
   ror a
   bcc skip_move_right
   lda velocity
+  bne init_velocity
+  adc #10
+init_velocity:
   clc
   adc #3
   bvs skip_move_right
@@ -518,6 +524,9 @@ skip_move_right:
   ror a
   bcc skip_move_left
   lda velocity
+  bne init_velocity2
+  sbc #10
+init_velocity2:
   clc
   sbc #3
   bvs skip_move_left
@@ -531,8 +540,6 @@ skip_move_left:
   dec vel_y
 skip_jumping:
   
-
-
 
 
 
@@ -561,17 +568,134 @@ skip_friction:
 
 ;handle velocity
   lda velocity
-  cmp #128
-  bcs negative_velocity
+  bpl positive_velocity
+  eor #$FF
+  clc
+  adc #1
   lsr a
   lsr a
   lsr a
   lsr a
   sta velhigh
+  jmp end_velocity_start
+positive_velocity:
+  lsr a
+  lsr a
+  lsr a
+  lsr a
+  sta velhigh
+end_velocity_start:
+
+
+
+
+
+
+
+
+;handle y velocity
+  lda jumping
+  beq skip_reset_jump
+  jsr airtime
+  lda jumping
+  
+skip_reset_jump:
+
+
+  jsr check_collision_points_with_bg
+
+  lda jumping
+  beq handle_no_jump
+  lda vel_y
+  bpl move_up
+skip_check_positive:
+  lda collision_vertical_right
+  ora collision_vertical_left 
+  beq skip_reset_move_down
+  lda playery 
+  clc
+  and #$F0
+  adc #$10
+  sta playery
+  lda #0
+  sta vel_y
+  sta jumping
+  jmp end_vertical_move
+skip_reset_move_down:
+  lda playery
+  clc 
+  adc vel_y_high
+  sta playery
+  jmp end_vertical_move
+move_up:
+  lda collision_vertical_right
+  ora collision_vertical_left 
+  beq skip_reset_move_up
+  lda playery
+  and #$F0
+  sbc #$01
+  sta playery
+  lda #0
+  sta vel_y
+  jmp end_vertical_move
+skip_reset_move_up:
+  lda playery
+  clc 
+  sbc vel_y_high
+  sta playery
+  jmp end_vertical_move
+handle_no_jump:
+  lda collision_vertical_right
+  ora collision_vertical_left 
+  bne end_vertical_move
+  lda #1
+  sta jumping 
+  lda #0
+  sta vel_y
+end_vertical_move:
+
+
+
+
+
+;horizontal movement
+
+
+
+
+
+  lda velocity
+  bpl movement_positive
+
+  ;lda collision_side_top
+  ;ora collision_side_bottom
+  ;bne skip_stop_at_left
+  lda playerx
+  clc
+  sbc vel_neg
+  cmp #250
+  bcc skip_stop_at_left
+  lda #2
+  sta playerx
+  jmp finish_velocity
+skip_stop_at_left:
+  sta playerx
+  ;lda playerx
+  ;and #$F0
+  ;sta playerx
+  ;lda #0
+  ;sta velocity
+  jmp finish_velocity
+  
+  movement_positive:
+  ;lda collision_side_top
+  ;ora collision_side_bottom
+  ;bne skip_move_to_right
   ldx playerx
   cpx #128
   bcc inc_playerx_location
   clc
+  lda velhigh
   adc ppu_scroll 
   sta ppu_scroll
   bcc skip_change_nt_on_scroll_end
@@ -582,55 +706,25 @@ skip_change_nt_on_scroll_end:
   jmp finish_velocity
 inc_playerx_location:
   clc
+  lda velhigh
   adc playerx
   sta playerx
   jmp finish_velocity
-negative_velocity:
-  eor #$FF
-  clc
-  adc #1
-  lsr a
-  lsr a
-  lsr a
-  lsr a
-  sta vel_neg
-  sta velhigh
+skip_move_to_right: 
   lda playerx
-  clc
-  sbc vel_neg
-  cmp #250
-  bcc skip_stop_at_left
-  lda #2
+  and #$F0
   sta playerx
-skip_stop_at_left:
-  sta playerx
+  lda #0
+  sta velocity
+  
+
+
 finish_velocity:
 
-;handle y velocity
-  lda jumping
-  beq skip_reset_jump
-  lda vel_y
-  bpl skip_neg_y_vel
-  eor #$FF 
-  clc
-  adc #1
-  adc playery
-  sta playery
-  jmp end_vel_y
-skip_neg_y_vel:
-  lda playery
-  sbc vel_y
-  sta playery
-end_vel_y:
-  lda playery
-  cmp #$AE
-  bcc skip_reset_jump
-  dec jumping
-  lda #$AF
-  sta playery
-  lda #0
-  sta vel_y
-skip_reset_jump:
+
+
+
+
 
 
 
@@ -1072,33 +1166,42 @@ skip_load:
 
 
 
-   ldy <tmp4
-;  tya
-;  and #%00000001
-;  bne handle_odd_collision_tile
-;  tya
-;  lsr a
-;  lsr a
-;  tay
-;  lda collision_tiles,x
-;  asl a
-;  asl a
-;  asl a
-;  asl a
-;  ora collision_table,y
-;  sta collision_tiles,x
-;  jmp end_collision_write
-;handle_odd_collision_tile:
-;  tya
-;  lsr a
-;  tay
-;  lda collision_table,y
-;  ora collision_tiles,x
-;  sta collision_table,y 
-;
-;end_collision_write:
+  ldy <tmp4
+  tya
+  ;divide by 4 then multiply by 16
+  asl a
+  asl a
+  sta <tmp3
+  lda current_position_low
+  lsr a
+  clc
+  adc <tmp3
+  tay
+  lda collision_tiles,x
+  sta <tmp
+  lda curr_nt_pos
+  bne skip_nt_0
+  lda #$F0
+  jmp skip_other_bit_mask
+skip_nt_0:
+  asl <tmp
+  asl <tmp
+  asl <tmp
+  asl <tmp
+  lda #$0F
+skip_other_bit_mask:
+  and collision_table,y
+  ora <tmp
+  sta collision_table,y
 
-  
+
+
+
+
+
+
+
+
   stx <tmp3
   txa
   asl a
@@ -1132,6 +1235,7 @@ fill_render_queue_loop:
   dec next_level
 ;reset_variables 
 
+  jsr read_next_screen_objects
   rts
   
 
@@ -1228,6 +1332,11 @@ draw_pit_loop:
 
 
 draw_block:
+  tya
+  pha
+  jsr nothing_write
+  pla
+  tay
   ldx #2
   jsr draw_metatile
   lda #0
@@ -1263,12 +1372,254 @@ skip_default_draw:
 
 
 
+init_nt0_collision:
+  ldx #192
+  lda #0
+load_pass_collision_loop:
+  dex
+  sta collision_table,x
+  bne load_pass_collision_loop
+  lda #1
+  ldy #48
+  ldx #191
+load_solid_collision_loop:
+  inx
+  sta collision_table,x
+  dey 
+  bne load_solid_collision_loop
+  rts
 
 
 
+airtime:
+  lda vel_y
+  bpl skip_neg_y_vel
+  eor #$FF 
+  clc
+  adc #1
+  lsr a
+  sta vel_y_high
+  rts
+skip_neg_y_vel:
+  lsr a
+  sta vel_y_high
+  rts
 
+check_collision_points_with_bg:
+;check below or above
+  lda jumping
+  beq handle_zero
+  lda vel_y
+  bpl handle_above
+  jsr handle_below_routine
+  jmp end_vertical_collision
+handle_zero:
+  jsr handle_zero_routine
+  jmp end_vertical_collision
+handle_above:
+  jsr handle_above_routine
+end_vertical_collision:
 
+;check left and right
   
+  lda velocity
+  beq end_horizontal_collision
+  bpl handle_right
+  jsr handle_left_routine
+  jmp end_horizontal_collision
+handle_right:
+  jsr handle_right_routine
+end_horizontal_collision:
+
+
+  rts
+
+handle_right_routine:
+  lda playery
+  sta playerytmp
+  lda playerx
+  adc #13
+  sbc #$10
+  adc ppu_scroll
+  adc velhigh
+  sta playerxtmp
+  jsr create_collision_lookup
+  sta collision_side_top + 1
+  tax
+  lda collision_table,x
+  jsr perform_nt_change
+  sta collision_side_top
+  lda playerytmp
+  adc #$10
+  sta playerytmp
+  jsr create_collision_lookup
+  sta collision_side_bottom + 1
+  tax
+  lda collision_table,x
+  jsr perform_nt_change
+  sta collision_side_bottom
+  rts
+
+handle_left_routine:
+  lda playery
+  sta playerytmp
+  lda playerx
+  adc #3
+  sbc #$10
+  adc ppu_scroll
+  sbc velhigh
+  sta playerxtmp
+  jsr create_collision_lookup
+  sta collision_side_top + 1
+  tax
+  lda collision_table,x
+  jsr perform_nt_change
+  sta collision_side_top
+  lda playerytmp
+  adc #$10
+  sta playerytmp
+  jsr create_collision_lookup
+  sta collision_side_bottom + 1
+  tax
+  lda collision_table,x
+  jsr perform_nt_change
+  sta collision_side_bottom
+  rts
+
+
+
+
+handle_below_routine:
+  lda playery
+  adc vel_y_high
+  adc #16
+  sta playerytmp
+  lda playerx
+  adc #3
+  sbc #$10
+  sta playerxtmp
+  jsr create_collision_lookup
+  sta collision_vertical_left + 1
+  tax
+  lda collision_table,x
+  jsr perform_nt_change
+  sta collision_vertical_left
+  lda playerxtmp
+  adc #10
+  sta playerxtmp
+  jsr create_collision_lookup
+  sta collision_vertical_right + 1
+  tax
+  lda collision_table,x
+  jsr perform_nt_change
+  sta collision_vertical_right
+  rts
+
+
+
+handle_above_routine:
+  lda playery
+  sbc vel_y_high
+  sta playerytmp
+  lda playerx
+  adc #3
+  sbc #$10
+  sta playerxtmp
+  jsr create_collision_lookup
+  sta collision_vertical_left + 1
+  tax
+  lda collision_table,x
+  jsr perform_nt_change
+  sta collision_vertical_left
+  lda playerxtmp
+  adc #10
+  sta playerxtmp
+  jsr create_collision_lookup
+  sta collision_vertical_right + 1
+  tax
+  lda collision_table,x
+  jsr perform_nt_change
+  sta collision_vertical_right
+  rts
+
+
+handle_zero_routine:
+  lda playery
+  adc #18
+  sta playerytmp
+  lda playerx
+  adc #3
+  sbc #$10
+  sta playerxtmp
+  jsr create_collision_lookup
+  sta collision_vertical_left + 1
+  tax
+  lda collision_table,x
+  jsr perform_nt_change
+  sta collision_vertical_left
+  lda playerxtmp
+  adc #10
+  sta playerxtmp
+  jsr create_collision_lookup
+  sta collision_vertical_right + 1
+  tax
+  lda collision_table,x
+  jsr perform_nt_change
+  sta collision_vertical_right
+  rts
+
+
+
+
+
+
+
+create_collision_lookup:
+  lda playerytmp
+  clc
+  and #$F0
+  sta <tmp2
+  lda playerxtmp
+  clc
+  adc ppu_scroll
+  clc
+  adc #3
+  lsr a
+  lsr a
+  lsr a
+  lsr a
+  clc
+  ora <tmp2
+  sta <tmp2
+  clc
+  rts
+
+perform_nt_change:
+  ldy curr_nt_pos
+  bne nt_1_op
+  and #$0F
+  jmp skip_nt_1_op
+nt_1_op:
+  lsr a
+  lsr a
+  lsr a
+  lsr a
+  clc
+skip_nt_1_op:
+  rts
+
+ 
+
+
+
+
+
+
+
+
+
+
+
 
 ;***Data********************************
 metatiles:
@@ -1288,7 +1639,7 @@ blockattr:    .db $01 ;2
 
 collision_tiles:
 spacecoll:  .db $00 ;0
-groundcoll:     .db $01 ;1
+groundcoll:     .db $00 ;1
 blockcoll:      .db $01 ;2
 
 
@@ -1313,42 +1664,34 @@ blockcoll:      .db $01 ;2
 
 
 level_1:
-  .db %00000001,$09
-  .db %10000001,$09
-  .db %10000001,$09
-  .db %10000001,$09
-  .db %10000001,$09
-  .db %10000001,$09
-  .db %10000001,$09
-  .db %10000001,$09
-  .db %10000001,$09
-  .db %10000001,$09
-  .db %10000001,$09
-  .db %10000001,$09
-  .db %10000001,$09
-  .db %10000001,$09
-  .db %10000001,$09
-  .db %10000001,$09
-  .db %10000001,$09
-  .db %10000001,$09
-  .db %10000001,$09
-  .db %10000001,$09
-  .db %10000001,$09
-  .db %10000001,$09
-  .db %10000001,$09
-  .db %10000001,$09
-  .db %10000001,$09
-  .db %10000001,$09
-  .db %10000001,$09
-  .db %10000001,$09
-  .db %10000001,$09
-  .db %10000001,$09
-  .db %10000001,$09
+  .db %00000001,$69
+  .db %00000001,$6A
+  .db %10000001,$5A
+  .db %10000001,$6B
+  .db %10000001,$6B
+  .db %10000001,$6A
+  .db %10000001,$6A
+  .db %10000001,$6A
+  .db %10000001,$6A
+  .db %10000001,$69
+  .db %10000001,$69
+  .db %10000001,$69
+  .db %10000001,$69
+  .db %10000001,$69
+  .db %10000001,$69
+  .db %10000001,$69
+  .db %00000000,$8E
   .db %00000000,$7E
+  .db %00000000,$6E
   .db %00000000,$5E
   .db %00000000,$4E
-  .db %00000001,$59
+  .db %00000001,$5A
   .db %10000000,$8E
+  .db %00000000,$8E
+  .db %00000000,$7E
+  .db %00000000,$6E
+  .db %00000000,$5E
+  .db %00000000,$4E
   .db %00000000,$6E
   .db %10000000,$4E
   .db %10000000,$4E
