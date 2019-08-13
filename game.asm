@@ -113,7 +113,7 @@ collision_vertical_right: .db 0,0
 playerxtmp: .db 0
 playerytmp: .db 0
 
-
+location_nt: .db 0
 
 
 
@@ -304,6 +304,7 @@ palette_loop:
   sta jumping
   sta count
   sta vel_y
+  sta location_nt
   sta num_objects 
   sta ppu_scroll
   sta current_position_low
@@ -667,30 +668,36 @@ end_vertical_move:
   lda velocity
   bpl movement_positive
 
-  ;lda collision_side_top
-  ;ora collision_side_bottom
-  ;bne skip_stop_at_left
+  lda collision_side_top
+  ora collision_side_bottom
+  bne skip_dec_x
   lda playerx
   clc
-  sbc vel_neg
-  cmp #250
+  sbc velhigh
+  cmp #245
   bcc skip_stop_at_left
   lda #2
   sta playerx
+  lda #0
+  sta velocity
   jmp finish_velocity
 skip_stop_at_left:
   sta playerx
-  ;lda playerx
-  ;and #$F0
-  ;sta playerx
-  ;lda #0
-  ;sta velocity
+  jmp finish_velocity
+skip_dec_x:
+  lda playerx
+  sbc velhigh
+  and #$F0
+  adc #$11
+  sta playerx
+  lda #0
+  sta velocity
   jmp finish_velocity
   
   movement_positive:
-  ;lda collision_side_top
-  ;ora collision_side_bottom
-  ;bne skip_move_to_right
+  lda collision_side_top
+  ora collision_side_bottom
+  bne skip_move_to_right
   ldx playerx
   cpx #128
   bcc inc_playerx_location
@@ -712,6 +719,7 @@ inc_playerx_location:
   jmp finish_velocity
 skip_move_to_right: 
   lda playerx
+  adc velhigh
   and #$F0
   sta playerx
   lda #0
@@ -1407,6 +1415,7 @@ skip_neg_y_vel:
 
 check_collision_points_with_bg:
 ;check below or above
+  jsr find_location_nt
   lda jumping
   beq handle_zero
   lda vel_y
@@ -1439,7 +1448,6 @@ handle_right_routine:
   sta playerytmp
   lda playerx
   adc #13
-  sbc #$10
   adc ppu_scroll
   adc velhigh
   sta playerxtmp
@@ -1450,7 +1458,7 @@ handle_right_routine:
   jsr perform_nt_change
   sta collision_side_top
   lda playerytmp
-  adc #$10
+  adc #$08
   sta playerytmp
   jsr create_collision_lookup
   sta collision_side_bottom + 1
@@ -1476,7 +1484,7 @@ handle_left_routine:
   jsr perform_nt_change
   sta collision_side_top
   lda playerytmp
-  adc #$10
+  adc #$08
   sta playerytmp
   jsr create_collision_lookup
   sta collision_side_bottom + 1
@@ -1595,7 +1603,7 @@ create_collision_lookup:
   rts
 
 perform_nt_change:
-  ldy curr_nt_pos
+  ldy location_nt
   bne nt_1_op
   and #$0F
   jmp skip_nt_1_op
@@ -1609,11 +1617,29 @@ skip_nt_1_op:
   rts
 
  
+ 
+find_location_nt:
+  clc
+  lda ppu_scroll
+  adc playerx
+  bcs Eyore
+  ldy velocity
+  bpl positive_addition
+  sbc velhigh
+  bcs Eyore
+  jmp finish_add_velocity
+positive_addition:
+  adc velhigh
+  bcs Eyore
+finish_add_velocity: 
+end_find_location
+  rts
 
-
-
-
-
+Eyore:
+  lda character_nt
+  eor #$FF
+  sta location_nt
+  jmp end_find_location 
 
 
 
