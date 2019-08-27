@@ -72,7 +72,6 @@ do_an_update: .db 0 ;update attribute table
 selected_attr_table_high: .db 0 ;tmp
 scroll_counter: .db 0 ;counts up until a complete 16 scroll
 
-
 ticks: .db 0
 velhigh: .db 0
 nmis: .db 0
@@ -503,10 +502,16 @@ pad_read_loop:
   bpl skip_set_jumping 
   lda jumping
   bne skip_set_jumping
+  lda last_keys
+  and #%10000000
+  bne skip_set_jumping
   inc jumping
   lda #20
   sta vel_y
 skip_set_jumping:
+
+
+
 
 ;increment velocity
   lda curr_keys
@@ -668,9 +673,9 @@ end_vertical_move:
   lda velocity
   bpl movement_positive
 
-  lda collision_side_top
-  ora collision_side_bottom
-  bne skip_dec_x
+ ; lda collision_side_top
+ ; ora collision_side_bottom
+ ; bne skip_dec_x
   lda playerx
   clc
   sbc velhigh
@@ -695,9 +700,9 @@ skip_dec_x:
   jmp finish_velocity
   
   movement_positive:
-  lda collision_side_top
-  ora collision_side_bottom
-  bne skip_move_to_right
+ ; lda collision_side_top
+ ; ora collision_side_bottom
+ ; bne skip_move_to_right
   ldx playerx
   cpx #128
   bcc inc_playerx_location
@@ -718,13 +723,6 @@ inc_playerx_location:
   sta playerx
   jmp finish_velocity
 skip_move_to_right: 
-  lda playerx
-  adc velhigh
-  and #$F0
-  sta playerx
-  lda #0
-  sta velocity
-  
 
 
 finish_velocity:
@@ -785,26 +783,15 @@ skip_edge_write:
 skipo:
 
 
-;check if update is complete
-  lda ppu_scroll
-  bne skip_seam 
-  lda curr_nt_pos
-  eor character_nt
-  ora current_position_low
-  bne skip_set_hit_end
-  lda #1
-  sta hit_end
-  lda #0
-  sta scroll_counter
-  jmp skip_set_hit_end
-skip_seam:
+
+
+
 
   lda character_nt
   cmp curr_nt_pos
   bne skip_set_hit_end
   ldx ppu_scroll
   stx <tmp
-  dex
   lda current_position_low
   asl a
   asl a
@@ -1353,7 +1340,6 @@ draw_block:
 
 
 
-
 ;default screen
 nothing_write:
   lda nothing
@@ -1621,26 +1607,30 @@ skip_nt_1_op:
 find_location_nt:
   clc
   lda ppu_scroll
-  adc playerx
-  bcs Eyore
   ldy velocity
   bpl positive_addition
   sbc velhigh
+  adc playerx
   bcs Eyore
   jmp finish_add_velocity
 positive_addition:
   adc velhigh
   bcs Eyore
+  adc playerx
+  bcs Eyore
 finish_add_velocity: 
 end_find_location
+  lda character_nt
+  sta location_nt
   rts
 
+
+ 
 Eyore:
   lda character_nt
-  eor #$FF
+  eor #$01
   sta location_nt
-  jmp end_find_location 
-
+  rts
 
 
 
@@ -1692,19 +1682,37 @@ blockcoll:      .db $01 ;2
 level_1:
   .db %00000001,$69
   .db %00000001,$6A
+  .db %00000000,$FE
   .db %10000001,$5A
+  .db %00000001,$4C
+  .db %00000001,$5B
+  .db %00000001,$6A
+  .db %00000001,$79
+  .db %00000001,$88
+  .db %10000000,$FE
+  .db %00000000,$FE
   .db %10000001,$6B
-  .db %10000001,$6B
+  .db %00000000,$FE
   .db %10000001,$6A
+  .db %00000000,$FE
   .db %10000001,$6A
+  .db %00000000,$FE
   .db %10000001,$6A
+  .db %00000000,$FE
   .db %10000001,$6A
+  .db %00000000,$FE
   .db %10000001,$69
+  .db %00000000,$FE
   .db %10000001,$69
+  .db %00000000,$FE
   .db %10000001,$69
+  .db %00000000,$FE
   .db %10000001,$69
+  .db %00000000,$FE
   .db %10000001,$69
+  .db %00000000,$FE
   .db %10000001,$69
+  .db %00000000,$FE
   .db %10000001,$69
   .db %00000000,$8E
   .db %00000000,$7E
@@ -1739,7 +1747,6 @@ level_lookup_table:
 drawing_procedure_lookup:
   .dw draw_pit
   .dw draw_block
-
 
 
 
