@@ -48,6 +48,16 @@ sprite_topr: .db 0,0,0,0
 sprite_botl: .db 0,0,0,0
 sprite_botr: .db 0,0,0,0
 
+;48
+jimbosprites: .db 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+
+;40
+robosprites: .db 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+
+
+
+
+
   .org $0300 
 playerx: .db 0
 playery: .db 0
@@ -331,6 +341,26 @@ palette_loop:
 
   lda #%10001100 
   sta $2000 
+  
+;init sprites for enemies
+  
+  ldx #48
+  stx <tmp
+load_jimbo_sprites_loop:
+  dec <tmp
+  ldy <tmp
+  
+  bne load_jimbo_sprites_loop
+
+
+
+
+  ldx #40
+  stx <tmp
+load_robo_sprites_loop  
+  dec <tmp
+  lda <tmp
+  bne load_robo_sprites_loop
 
 
 
@@ -1339,6 +1369,12 @@ draw_block:
   jmp return_from_draw
 
 
+draw_jimbo:
+  inc num_jimbos
+
+
+
+
 
 ;default screen
 nothing_write:
@@ -1747,7 +1783,7 @@ level_lookup_table:
 drawing_procedure_lookup:
   .dw draw_pit
   .dw draw_block
-
+  .dw draw_jimbo
 
 
 
@@ -1823,3 +1859,13 @@ music_triangle_pattern1:
 
 
 
+  .inesmir 1 ;mirroring
+  .inesmap 0 ;mapper number (no mapper)
+  .ineschr 1 ;number of 8kb banks
+  .inesprg 2 ;number of 16kb banks
+
+  .bank 3
+  .org $FFFA ;stores location interupts (vector table)
+
+  .dw NMI ;Non Maskable interupt
+          ;Can be masked at address $2000 bit 7 is clear
